@@ -36,6 +36,8 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
+        credentials: 'include',
+        cache: 'no-store',
       });
 
       console.log('[Login] Response status:', res.status);
@@ -55,6 +57,11 @@ export default function LoginPage() {
 
       setUser(user);
       setToken(token);
+
+      // Update service worker to clear old caches
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.controller?.postMessage({ type: 'CLEAR_CACHE' });
+      }
 
       if (!user.onboardingCompleted) {
         console.log('[Login] Redirecting to /onboarding');

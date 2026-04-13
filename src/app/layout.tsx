@@ -41,7 +41,27 @@ export default function RootLayout({
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').catch(function() {});
+                  navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
+                    // Force check for updates every time
+                    reg.update();
+                    // If new version available, activate immediately
+                    reg.addEventListener('updatefound', function() {
+                      const newWorker = reg.installing;
+                      newWorker.addEventListener('statechange', function() {
+                        if (newWorker.state === 'activated') {
+                          // Reload to get new version
+                          window.location.reload();
+                        }
+                      });
+                    });
+                  }).catch(function() {});
+
+                  // Listen for messages from service worker
+                  navigator.serviceWorker.addEventListener('message', function(event) {
+                    if (event.data && event.data.type === 'RELOAD') {
+                      window.location.reload();
+                    }
+                  });
                 });
               }
             `,

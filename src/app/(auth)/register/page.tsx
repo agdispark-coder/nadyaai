@@ -100,6 +100,8 @@ export default function RegisterPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        credentials: 'include',
+        cache: 'no-store',
       });
 
       console.log('[Register] Response status:', res.status);
@@ -130,6 +132,8 @@ export default function RegisterPage() {
               Cookie: `token=${token}`,
             },
             body: JSON.stringify({ fitnessGoal: selectedGoal }),
+            credentials: 'include',
+            cache: 'no-store',
           });
         } catch {
           // non-critical, proceed anyway

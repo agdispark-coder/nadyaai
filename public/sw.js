@@ -1,15 +1,14 @@
-const STATIC_CACHE = 'nadya-static-v1';
-const DYNAMIC_CACHE = 'nadya-dynamic-v1';
+const STATIC_CACHE = 'nadya-static-v2';
+const DYNAMIC_CACHE = 'nadya-dynamic-v2';
 
 // Static assets to pre-cache on install
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];
 
-// Install event - cache static assets
+// Install event - cache static assets only
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
@@ -19,14 +18,12 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up ALL old caches (forces fresh start)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames
-          .filter((name) => name !== STATIC_CACHE && name !== DYNAMIC_CACHE)
-          .map((name) => caches.delete(name))
+        cacheNames.map((name) => caches.delete(name))
       );
     })
   );
@@ -38,29 +35,37 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
-
-  // Skip chrome-extension and non-http requests
+  // Skip non-http requests
   if (!url.protocol.startsWith('http')) return;
 
-  // Network-first strategy for API calls
+  // IMPORTANT: NEVER cache API calls - always go to network
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirst(request));
+    // For non-GET (POST, PUT, DELETE) - let browser handle normally
+    if (request.method !== 'GET') return;
+
+    // For GET API calls - network only, no caching
+    event.respondWith(
+      fetch(request).catch(() => {
+        return new Response(JSON.stringify({ success: false, error: 'Offline' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      })
+    );
     return;
   }
 
-  // Cache-first strategy for static assets
+  // Cache-first strategy for static assets only (images, fonts, etc)
   if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request));
     return;
   }
 
-  // Network-first with cache fallback for everything else
-  event.respondWith(networkFirst(request));
+  // For HTML pages - ALWAYS network first (never serve cached HTML)
+  event.respondWith(networkFirstNoCache(request));
 });
 
-// Cache-first strategy: serve from cache, fallback to network
+// Cache-first for static assets (images, fonts, icons)
 async function cacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
@@ -77,22 +82,20 @@ async function cacheFirst(request) {
   }
 }
 
-// Network-first strategy: try network, fallback to cache
-async function networkFirst(request) {
+// Network-first for HTML pages - NEVER cache them
+async function networkFirstNoCache(request) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, response.clone());
-    }
     return response;
   } catch {
+    // Offline fallback - serve cached version or offline page
     const cached = await caches.match(request);
     if (cached) return cached;
 
-    // Return offline fallback for navigation requests
+    // For navigation requests, serve the cached homepage
     if (request.mode === 'navigate') {
-      return caches.match('/');
+      const cachedHome = await caches.match('/');
+      if (cachedHome) return cachedHome;
     }
 
     return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
@@ -102,8 +105,6 @@ async function networkFirst(request) {
 // Check if URL is a static asset
 function isStaticAsset(url) {
   const staticExtensions = [
-    '.js',
-    '.css',
     '.png',
     '.jpg',
     '.jpeg',
