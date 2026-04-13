@@ -1,0 +1,463 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ============ USER MODEL ============
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String    @unique
+  password      String?
+  name          String?
+  avatar        String?   @default("default")
+  bio           String?   @default("")
+  phone         String?
+  country       String?   @default("MA")
+  city          String?
+  gender        String?   @default("other")
+  dateOfBirth   DateTime?
+  height        Float?    // cm
+  weight        Float?    // kg
+  fitnessGoal   String?   @default("lose_weight") // lose_weight, build_muscle, stay_fit, endurance
+  activityLevel String?   @default("moderate") // sedentary, light, moderate, active, very_active
+  role          String    @default("user") // user, coach, admin
+  
+  // Gamification
+  xp            Int       @default(0)
+  level         Int       @default(1)
+  streak        Int       @default(0)
+  longestStreak Int       @default(0)
+  lastActiveAt  DateTime?
+  totalWorkouts Int       @default(0)
+  totalMeals    Int       @default(0)
+  totalCaloriesBurned Int @default(0)
+  
+  // Subscription
+  subscriptionTier  String @default("free") // free, bronze, silver, gold, platinum
+  subscriptionEndAt DateTime?
+  
+  // Referral
+  referralCode String @unique @default(cuid())
+  referredBy   String?
+  
+  // Onboarding
+  onboardingCompleted Boolean @default(false)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  workouts       Workout[]
+  meals          Meal[]
+  challenges     ChallengeParticipant[]
+  squadMembers   SquadMember[]
+  sentRequests   FriendRequest[] @relation("SentRequests")
+  receivedRequests FriendRequest[] @relation("ReceivedRequests")
+  friendships    Friendship[]     @relation("UserFriendships")
+  friendshipsOf  Friendship[]     @relation("FriendOf")
+  notifications  Notification[]
+  achievements   UserAchievement[]
+  wallet         Wallet?
+  transactions   Transaction[]
+  subscriptions  Subscription[]
+  referralEarnings ReferralEarning[]
+  dailyLogs      DailyLog[]
+  posts          Post[]
+  postLikes      PostLike[]
+  comments       Comment[]
+  squadPosts     SquadPost[]
+  referralOf     ReferralEarning[] @relation("ReferredUser")
+  createdChallenges Challenge[] @relation("ChallengeCreator")
+  createdSquads   Squad[] @relation("SquadCreator")
+  
+  @@index([referralCode])
+  @@index([referredBy])
+  @@index([subscriptionTier])
+}
+
+// ============ WORKOUT ============
+model Workout {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  type        String   // strength, cardio, hiit, yoga, flexibility, sports
+  duration    Int      // minutes
+  difficulty  String?  @default("medium") // beginner, easy, medium, hard, expert
+  notes       String?
+  calories    Int?     @default(0)
+  completedAt DateTime @default(now())
+  isPublic    Boolean  @default(false)
+  
+  exercises   Exercise[]
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([completedAt])
+  @@index([type])
+}
+
+model Exercise {
+  id         String   @id @default(cuid())
+  workoutId  String
+  name       String
+  sets       Int?
+  reps       Int?
+  weight     Float?   // kg
+  duration   Int?     // seconds
+  distance   Float?   // km
+  order      Int      @default(0)
+  
+  workout    Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  
+  @@index([workoutId])
+}
+
+// ============ MEAL ============
+model Meal {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // breakfast, lunch, dinner, snack
+  name        String?
+  imageUrl    String?
+  calories    Int      @default(0)
+  protein     Float?   @default(0)
+  carbs       Float?   @default(0)
+  fats        Float?   @default(0)
+  fiber       Float?   @default(0)
+  water       Float?   @default(0) // ml
+  notes       String?
+  aiScanned   Boolean  @default(false)
+  loggedAt    DateTime @default(now())
+  
+  items       MealItem[]
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([loggedAt])
+  @@index([type])
+}
+
+model MealItem {
+  id      String @id @default(cuid())
+  mealId  String
+  name    String
+  amount  Float?
+  unit    String? @default("g")
+  calories Int?   @default(0)
+  protein  Float? @default(0)
+  carbs    Float? @default(0)
+  fats     Float? @default(0)
+  
+  meal    Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  
+  @@index([mealId])
+}
+
+// ============ CHALLENGES ============
+model Challenge {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        String   // daily, weekly, monthly, custom
+  category    String   // workout, nutrition, consistency, special
+  goalTarget  Int      @default(1)
+  goalUnit    String?  @default("times") // times, calories, minutes, km, workouts
+  rewardXP    Int      @default(50)
+  rewardCoins Int      @default(10)
+  startDate   DateTime
+  endDate     DateTime
+  isPublic    Boolean  @default(true)
+  createdBy   String?
+  
+  participants ChallengeParticipant[]
+  creator     User?    @relation("ChallengeCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  
+  @@index([type])
+  @@index([startDate])
+}
+
+model ChallengeParticipant {
+  id           String   @id @default(cuid())
+  challengeId  String
+  userId       String
+  progress     Int      @default(0)
+  completed    Boolean  @default(false)
+  completedAt  DateTime?
+  joinedAt     DateTime @default(now())
+  
+  challenge    Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([challengeId, userId])
+  @@index([userId])
+}
+
+// ============ SQUADS ============
+model Squad {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  avatar      String?  @default("default")
+  isPublic    Boolean  @default(true)
+  maxMembers  Int      @default(50)
+  inviteCode  String   @unique @default(cuid())
+  createdBy   String
+  createdAt   DateTime @default(now())
+  
+  members     SquadMember[]
+  posts       SquadPost[]
+  creator     User     @relation("SquadCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  
+  @@index([inviteCode])
+  @@index([createdBy])
+}
+
+model SquadMember {
+  id        String   @id @default(cuid())
+  squadId   String
+  userId    String
+  role      String   @default("member") // owner, admin, member
+  joinedAt  DateTime @default(now())
+  
+  squad     Squad    @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([squadId, userId])
+  @@index([userId])
+}
+
+model SquadPost {
+  id        String   @id @default(cuid())
+  squadId   String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  
+  squad     Squad    @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([squadId])
+}
+
+// ============ FRIENDS ============
+model FriendRequest {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     String   @default("pending") // pending, accepted, rejected
+  createdAt  DateTime @default(now())
+  
+  sender     User     @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+  
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+}
+
+model Friendship {
+  id        String   @id @default(cuid())
+  userId    String
+  friendId  String
+  createdAt DateTime @default(now())
+  
+  user      User     @relation("UserFriendships", fields: [userId], references: [id], onDelete: Cascade)
+  friend    User     @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, friendId])
+  @@index([userId])
+}
+
+// ============ NOTIFICATIONS ============
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // friend_request, challenge, squad, achievement, subscription, referral, system, workout_reminder
+  title     String
+  message   String
+  data      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, read])
+  @@index([userId, createdAt])
+}
+
+// ============ ACHIEVEMENTS ============
+model Achievement {
+  id          String            @id @default(cuid())
+  name        String
+  description String
+  icon        String
+  category    String            // workout, nutrition, social, streak, special
+  xpReward    Int               @default(0)
+  requirement Int               @default(1)
+  
+  users       UserAchievement[]
+}
+
+model UserAchievement {
+  id            String     @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime   @default(now())
+  
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, achievementId])
+  @@index([userId])
+}
+
+// ============ WALLET & TRANSACTIONS ============
+model Wallet {
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  balance  Float    @default(0)
+  coins    Int      @default(0)
+  
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  walletId    String
+  userId      String
+  type        String   // credit, debit, subscription, referral, achievement, challenge_reward, withdrawal
+  amount      Float
+  coins       Int?     @default(0)
+  description String
+  status      String   @default("completed") // pending, completed, failed
+  createdAt   DateTime @default(now())
+  
+  wallet      Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([walletId])
+  @@index([createdAt])
+}
+
+// ============ SUBSCRIPTIONS (5 TIERS) ============
+// Tiers: free, bronze, silver, gold, platinum
+model Subscription {
+  id          String   @id @default(cuid())
+  userId      String
+  tier        String   // free, bronze, silver, gold, platinum
+  price       Float    @default(0)
+  currency    String   @default("MAD")
+  startDate   DateTime @default(now())
+  endDate     DateTime?
+  status      String   @default("active") // active, expired, cancelled
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
+}
+
+// Subscription tier pricing
+model SubscriptionTier {
+  id          String   @id @default(cuid())
+  tier        String   @unique // free, bronze, silver, gold, platinum
+  name        String
+  price       Float
+  currency    String   @default("MAD")
+  duration    Int      @default(30) // days
+  features    String    // list of features (JSON string)
+  maxWorkouts Int?     // per week, null = unlimited
+  maxMeals    Int?     // per day, null = unlimited
+  aiScans     Int?     // per day, null = unlimited
+  squadLimit  Int      @default(1)
+  
+  @@index([tier])
+}
+
+// ============ REFERRAL (7-TIER AFFILIATE) ============
+model ReferralEarning {
+  id           String   @id @default(cuid())
+  userId       String   // earner
+  referredId   String   // who was referred
+  tier         Int      // 1-7, which level in the referral tree
+  amount       Float
+  percentage   Float    // commission % for this tier
+  createdAt    DateTime @default(now())
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referredUser User     @relation("ReferredUser", fields: [referredId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([referredId])
+  @@index([tier])
+}
+
+// ============ DAILY LOG (for streaks & analytics) ============
+model DailyLog {
+  id         String   @id @default(cuid())
+  userId     String
+  date       DateTime @unique
+  caloriesIn Int      @default(0)
+  caloriesOut Int     @default(0)
+  waterIntake Float?  @default(0) // liters
+  sleepHours  Float?  @default(0)
+  steps       Int?    @default(0)
+  mood        String? @default("good") // great, good, okay, bad, terrible
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// ============ SOCIAL FEED ============
+model Post {
+  id        String   @id @default(cuid())
+  userId    String
+  content   String?
+  imageUrl  String?
+  type      String   @default("post") // post, workout_share, achievement, challenge
+  isPublic  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes     PostLike[]
+  comments  Comment[]
+  
+  @@index([userId, createdAt])
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([postId, userId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([postId])
+}
